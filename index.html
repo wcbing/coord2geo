@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light dark">
+<title>坐标转地图链接 (coord2geo)</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --accent: #1565c0;
+    --accent-strong: #0d47a1;
+    --accent-soft: rgba(21, 101, 192, .12);
+    --label: #1976d2;
+    --surface: #ffffff;
+    --surface-2: #eef0f3;
+    --card: #e3e7ec;
+    --card-hover: #d8dde3;
+    --text: #1a1c1e;
+    --text-2: #5f6368;
+    --border: rgba(0, 0, 0, .12);
+    --shadow: 0 1px 3px rgba(0, 0, 0, .08);
+    --ok: #2e7d32;
+    --error: #b00020;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --accent: #64b5f6;
+      --accent-strong: #90caf9;
+      --accent-soft: rgba(100, 181, 246, .16);
+      --label: #64b5f6;
+      --surface: #1c1f23;
+      --surface-2: #23272c;
+      --card: #262b31;
+      --card-hover: #30363d;
+      --text: #e6e8ea;
+      --text-2: #9aa0a6;
+      --border: rgba(255, 255, 255, .14);
+      --shadow: 0 1px 3px rgba(0, 0, 0, .5);
+      --ok: #81c784;
+      --error: #ef5350;
+    }
+  }
+  body {
+    margin: 0;
+    color: var(--text);
+  }
+
+  /* ---------- 顶栏 ---------- */
+  .appbar {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 14px clamp(16px, 4vw, 32px);
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .appbar .title { font-size: clamp(18px, 3vw, 22px); font-weight: 700; letter-spacing: .5px; }
+  .appbar .subtitle { font-size: 13px; color: var(--text-2); }
+
+  /* ---------- 布局：输入模块独立一行居中，链接结果在其下方 ---------- */
+  .layout {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: clamp(14px, 3vw, 28px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: clamp(16px, 3vw, 28px);
+  }
+
+  /* ---------- 输入面板 ---------- */
+  .panel {
+    width: 100%;
+    max-width: 560px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: clamp(14px, 2.5vw, 20px);
+    box-shadow: var(--shadow);
+  }
+  .input-row { display: flex; gap: 10px; }
+  .input-wrap {
+    flex: 1;
+    min-width: 0;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface-2);
+    padding: 10px 12px;
+    transition: border-color .15s;
+  }
+  .input-wrap:focus-within { border-color: var(--accent); }
+  .input-wrap label { display: block; font-size: 12px; color: var(--accent); font-weight: 700; margin-bottom: 2px; }
+  #coordInput {
+    width: 100%;
+    border: none;
+    background: transparent;
+    color: var(--text);
+    font-size: clamp(15px, 2.5vw, 17px);
+    outline: none;
+    padding: 2px 0;
+  }
+  .btn {
+    flex: none;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    width: 48px;
+    align-self: stretch;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .btn:hover { background: var(--accent-strong); }
+  .btn svg { width: 24px; height: 24px; fill: #fff; }
+  @media (prefers-color-scheme: dark) {
+    .btn svg { fill: #0d2137; }
+    .btn { color: #0d2137; }
+  }
+  .status { font-size: 13px; color: var(--error); margin-top: 10px; min-height: 18px; overflow-wrap: break-word; }
+  .status.ok { color: var(--ok); }
+
+  /* ---------- 偏移纠正开关 ---------- */
+  .switch-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+  }
+  .switch-row .switch-text { flex: 1; min-width: 0; }
+  .switch-row .switch-title { font-size: 14px; font-weight: 600; }
+  .switch-row .switch-hint { font-size: 12px; color: var(--text-2); margin-top: 2px; line-height: 1.4; }
+  .switch { position: relative; flex: none; width: 46px; height: 26px; display: inline-block; }
+  .switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+  .switch .slider {
+    position: absolute;
+    inset: 0;
+    background: var(--card-hover);
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background .2s;
+  }
+  .switch .slider::before {
+    content: "";
+    position: absolute;
+    width: 20px; height: 20px;
+    left: 3px; top: 3px;
+    background: #fff;
+    border-radius: 50%;
+    transition: transform .2s;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, .3);
+  }
+  .switch input:checked + .slider { background: var(--accent); }
+  .switch input:checked + .slider::before { transform: translateX(20px); }
+  .switch input:focus-visible + .slider { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ---------- 结果区 ---------- */
+  .results-section {
+    width: 100%;
+  }
+  .results-section + .results-section { margin-top: clamp(18px, 3vw, 26px); }
+  .section-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text);
+    margin: 0 0 12px;
+    padding-left: 10px;
+    border-left: 4px solid var(--accent);
+    line-height: 1.15;
+  }
+  .results-head {
+    font-size: 14px;
+    color: var(--text-2);
+    margin: 2px 0 16px;
+    text-align: center;
+  }
+  #resultsArea[hidden] { display: none; }
+  .gap-top { margin-top: clamp(18px, 3vw, 26px); }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+    gap: 14px;
+  }
+  .result-card {
+    background: var(--card);
+    border-radius: 12px;
+    padding: 12px 14px;
+    cursor: pointer;
+    transition: background .15s, transform .15s;
+    position: relative;
+    overflow: hidden;
+    text-decoration: none;
+    display: block;
+    color: inherit;
+  }
+  .result-card:hover { background: var(--card-hover); transform: translateY(-1px); }
+  .result-card .label {
+    font-size: 13px;
+    color: var(--label);
+    font-weight: 700;
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding-right: 40px;
+  }
+  .result-card .value {
+    font-size: clamp(14px, 1.8vw, 15.5px);
+    word-break: break-all;
+    line-height: 1.5;
+    color: var(--text);
+  }
+  .tag {
+    font-size: 11px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-weight: 700;
+  }
+  .result-card .copy-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 30px;
+    height: 30px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    transition: background .15s, border-color .15s;
+  }
+  .result-card .copy-btn:hover { border-color: var(--accent); background: var(--surface-2); }
+  .result-card .copy-btn svg { width: 16px; height: 16px; fill: var(--text-2); }
+  .result-card .copy-btn:hover svg { fill: var(--accent); }
+  .result-card .copy-btn.done { border-color: var(--ok); }
+  .result-card .copy-btn.done svg { fill: var(--ok); }
+
+  footer {
+    text-align: center;
+    padding: 8px 16px 32px;
+    font-size: 13px;
+    color: var(--text-2);
+  }
+  footer a { color: var(--accent); text-decoration: none; font-weight: 600; }
+</style>
+</head>
+<body>
+  <header class="appbar">
+    <span class="title">coord2geo</span>
+    <span class="subtitle">坐标—地图链接转换器</span>
+  </header>
+
+  <main class="layout">
+    <!-- 输入面板：独立一行居中 -->
+    <section class="panel">
+      <div class="input-row">
+        <div class="input-wrap">
+          <label for="coordInput">坐标 / 地图链接</label>
+          <input id="coordInput" type="text" spellcheck="false" autocomplete="off"
+                 placeholder="如 39°54'26&quot;N 116°23'28&quot;E 或 39.9072,116.3912">
+        </div>
+        <button class="btn" id="convertBtn">转换</button>
+        <button class="btn" id="locBtn" title="获取当前位置">
+          <svg viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm8.94 3A9 9 0 0 0 13 3.06V1h-2v2.06A9 9 0 0 0 3.06 11H1v2h2.06A9 9 0 0 0 11 20.94V23h2v-2.06A9 9 0 0 0 20.94 13H23v-2h-2.06zM12 19a7 7 0 1 1 0-14 7 7 0 0 1 0 14z"/></svg>
+        </button>
+      </div>
+
+      <div class="switch-row">
+        <div class="switch-text">
+          <div class="switch-title">纠正中国区域的地图偏移</div>
+          <div class="switch-hint">控制部分地图使用 GCJ-02 还是原始 WGS-84 定位国内坐标</div>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="offsetSwitch" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <div class="status" id="status"></div>
+    </section>
+
+    <!-- 结果区：位于输入面板下方 -->
+    <section class="results-section">
+      <div class="results-head" id="resultsHead">输入坐标或链接后，转换结果将显示在这里。</div>
+
+      <div id="resultsArea" hidden>
+        <h2 class="section-title">坐标表示</h2>
+        <div class="grid" id="coordResults"></div>
+
+        <div class="results-section gap-top">
+          <h2 class="section-title">在线地图</h2>
+          <div class="grid" id="linkResults"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>支持十进制、度分（DMM）、度分秒（DMS）坐标及 OSM / Google / geo 链接解析</footer>
+
+<script>
+"use strict";
+
+/* ---------- 坐标解析 ---------- */
+
+// 精度上限：7 位小数（约 1 厘米）；输入解析结果与派生坐标统一按此裁剪，避免纳米级冗余位数
+const MAX_DECIMALS = 7;
+function fmtCoord(v) {
+  const n = Number(v);
+  if (!isFinite(n)) return "0";
+  const s = n.toFixed(MAX_DECIMALS);
+  if (Number(s) === 0) return "0"; // 含 -0 与四舍五入后归零的情况
+  return s.includes(".") ? s.replace(/0+$/, "").replace(/\.$/, "") : s;
+}
+
+function dmsToDecimal(d, m, s, hemi) {
+  let v = Number(d) + Number(m) / 60 + Number(s || 0) / 3600;
+  if (hemi === "S" || hemi === "W") v = -v;
+  return v;
+}
+
+function parseCoordRaw(text) {
+  text = text.trim();
+  if (!text) return null;
+
+  // OSM 链接: #map=zoom/lat/lon 或 ?mlat=&mlon=
+  let m = text.match(/openstreetmap\.org[^#]*#map=\d+(?:\.\d+)?\/(-?\d+(?:\.\d+)?)\/(-?\d+(?:\.\d+)?)/i)
+       || text.match(/[?&]mlat=(-?\d+(?:\.\d+)?)&[?&]?mlon=(-?\d+(?:\.\d+)?)/i);
+  if (m) return { lat: +m[1], lon: +m[2] };
+
+  // Google Maps 链接: @lat,lon | !3dlat!4dlon | q=lat,lon | ll=lat,lon
+  m = text.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/)
+   || text.match(/!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/)
+   || text.match(/[?&](?:q|ll|query|center)=(-?\d+(?:\.\d+)?)[,%2C]+(-?\d+(?:\.\d+)?)/i);
+  if (m) return { lat: +m[1], lon: +m[2] };
+
+  // geo: 链接
+  m = text.match(/^geo:(-?\d+(?:\.\d+)?)[,;](-?\d+(?:\.\d+)?)/i);
+  if (m) return { lat: +m[1], lon: +m[2] };
+
+  // 十进制: 39.917838,116.397028（分隔符：逗号/分号/空白）
+  m = text.match(/^(-?\d+(?:\.\d+)?)\s*[,;，；\/]\s*(-?\d+(?:\.\d+)?)$/) || text.match(/^(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)$/);
+  if (m) return { lat: +m[1], lon: +m[2] };
+
+  // DMS: 37°37'44"N 114°56'24"E（分隔符可为空格/逗号/分号）
+  m = text.match(
+    /(\d+(?:\.\d+)?)\s*[°ºd度]\s*(\d+(?:\.\d+)?)?\s*['′′m分]?\s*(\d+(?:\.\d+)?)?\s*["″″s秒]?\s*([NS南北])\s*[,;，]?\s*(\d+(?:\.\d+)?)\s*[°ºd度]\s*(\d+(?:\.\d+)?)?\s*['′′m分]?\s*(\d+(?:\.\d+)?)?\s*["″″s秒]?\s*([EW东西])/i
+  );
+  if (m) {
+    const lat = dmsToDecimal(m[1], m[2] || 0, m[3] || 0, normalizeHemi(m[4]));
+    const lon = dmsToDecimal(m[5], m[6] || 0, m[7] || 0, normalizeHemi(m[8]));
+    return { lat, lon };
+  }
+
+  // DMS 无半球字母（带符号）: +37°37'44" +114°56'24"
+  m = text.match(
+    /([+-]?\d+(?:\.\d+)?)\s*[°ºd度]\s*(\d+(?:\.\d+)?)?\s*['′′m分]?\s*(\d+(?:\.\d+)?)?\s*["″″s秒]?\s*[,;，]?\s*([+-]?\d+(?:\.\d+)?)\s*[°ºd度]\s*(\d+(?:\.\d+)?)?\s*['′′m分]?\s*(\d+(?:\.\d+)?)?\s*["″″s秒]?/
+  );
+  if (m && /[°ºd度]/.test(text)) {
+    let lat = dmsToDecimal(Math.abs(+m[1]), m[2] || 0, m[3] || 0, "N");
+    let lon = dmsToDecimal(Math.abs(+m[4]), m[5] || 0, m[6] || 0, "E");
+    if (m[1].startsWith("-")) lat = -lat;
+    if (m[4].startsWith("-")) lon = -lon;
+    return { lat, lon };
+  }
+
+  // DMM: 37°37.7333'N 114°56.4000'E
+  m = text.match(/(\d+(?:\.\d+)?)\s*°\s*(\d+(?:\.\d+)?)\s*['′]\s*([NS])\s*[,;，]?\s*(\d+(?:\.\d+)?)\s*°\s*(\d+(?:\.\d+)?)\s*['′]\s*([EW])/i);
+  if (m) {
+    const lat = dmsToDecimal(m[1], m[2], 0, normalizeHemi(m[3]));
+    const lon = dmsToDecimal(m[4], m[5], 0, normalizeHemi(m[6]));
+    return { lat, lon };
+  }
+
+  return null;
+}
+
+function normalizeHemi(h) {
+  const c = String(h).trim();
+  if ("南南".includes(c)) return "S";
+  if ("西".includes(c)) return "W";
+  return c.toUpperCase();
+}
+
+// 对外入口：解析后统一裁剪精度（最高分米/厘米级）
+function parseCoord(text) {
+  const r = parseCoordRaw(text);
+  if (!r) return null;
+  return { lat: Number(fmtCoord(r.lat)), lon: Number(fmtCoord(r.lon)) };
+}
+
+/* ---------- 坐标系转换（WGS-84 -> GCJ-02 -> BD-09，用于国内地图） ---------- */
+
+const PI = Math.PI;
+const A = 6378245.0;
+const EE = 0.00669342162296594323;
+
+function outOfChina(lat, lon) {
+  return lon < 72.004 || lon > 137.8347 || lat < 0.8293 || lat > 55.8271;
+}
+function transformLat(x, y) {
+  let ret = -100.0 + 2.0 * x + 3.0 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * Math.sqrt(Math.abs(x));
+  ret += (20.0 * Math.sin(6.0 * x * PI) + 20.0 * Math.sin(2.0 * x * PI)) * 2.0 / 3.0;
+  ret += (20.0 * Math.sin(y * PI) + 40.0 * Math.sin(y / 3.0 * PI)) * 2.0 / 3.0;
+  ret += (160.0 * Math.sin(y / 12.0 * PI) + 320 * Math.sin(y * PI / 30.0)) * 2.0 / 3.0;
+  return ret;
+}
+function transformLon(x, y) {
+  let ret = 300.0 + x + 2.0 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * Math.sqrt(Math.abs(x));
+  ret += (20.0 * Math.sin(6.0 * x * PI) + 20.0 * Math.sin(2.0 * x * PI)) * 2.0 / 3.0;
+  ret += (20.0 * Math.sin(x * PI) + 40.0 * Math.sin(x / 3.0 * PI)) * 2.0 / 3.0;
+  ret += (150.0 * Math.sin(x / 12.0 * PI) + 300.0 * Math.sin(x / 30.0 * PI)) * 2.0 / 3.0;
+  return ret;
+}
+function wgs84ToGcj02(lat, lon) {
+  if (outOfChina(lat, lon)) return { lat, lon };
+  let dLat = transformLat(lon - 105.0, lat - 35.0);
+  let dLon = transformLon(lon - 105.0, lat - 35.0);
+  const radLat = lat / 180.0 * PI;
+  let magic = Math.sin(radLat);
+  magic = 1 - EE * magic * magic;
+  const sqrtMagic = Math.sqrt(magic);
+  dLat = (dLat * 180.0) / ((A * (1 - EE)) / (magic * sqrtMagic) * PI);
+  dLon = (dLon * 180.0) / (A / sqrtMagic * Math.cos(radLat) * PI);
+  return { lat: lat + dLat, lon: lon + dLon };
+}
+function gcj02ToBd09(lat, lon) {
+  if (outOfChina(lat, lon)) return { lat, lon };
+  const z = Math.sqrt(lon * lon + lat * lat) + 0.00002 * Math.sin(lat * 3000.0 * PI);
+  const theta = Math.atan2(lat, lon) + 0.000003 * Math.cos(lon * 3000.0 * PI);
+  return { lat: z * Math.sin(theta) + 0.006, lon: z * Math.cos(theta) + 0.0065 };
+}
+
+/* ---------- 结果生成 ---------- */
+
+// 十进制 -> 度分秒（DMS），如 39°55'04"N
+function toDMS(val, isLatS) {
+  const hemi = isLatS ? (val < 0 ? "S" : "N") : (val < 0 ? "W" : "E");
+  let t = Math.abs(val);
+  let deg = Math.floor(t);
+  const minFull = (t - deg) * 60;
+  let min = Math.floor(minFull);
+  let sec = Math.round((minFull - min) * 60);
+  if (sec >= 60) { sec = 0; min += 1; }
+  if (min >= 60) { min = 0; deg += 1; }
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${deg}°${pad(min)}'${pad(sec)}"${hemi}`;
+}
+
+// 十进制 -> 度分（DMM），如 39°55.075'N
+function toDMM(val, isLatS) {
+  const hemi = isLatS ? (val < 0 ? "S" : "N") : (val < 0 ? "W" : "E");
+  const t = Math.abs(val);
+  const deg = Math.floor(t);
+  const min = (t - deg) * 60;
+  return `${deg}°${min.toFixed(4)}'${hemi}`;
+}
+
+// 第一块：坐标表示（纯文本，点击复制）
+function buildCoordItems(lat, lon) {
+  const latS = fmtCoord(lat), lonS = fmtCoord(lon);
+  return [
+    { name: "GeoLink", url: `geo:${latS},${lonS}`},
+    { name: "十进制坐标", url: `${latS},${lonS}`, textOnly: true },
+    { name: "度分秒（DMS）坐标", url: `${toDMS(lat, true)} ${toDMS(lon, false)}`, textOnly: true },
+    { name: "度分（DMM）坐标", url: `${toDMM(lat, true)} ${toDMM(lon, false)}`, textOnly: true },
+  ];
+}
+
+// 第二块：地图链接
+// 国内地图和部分国外地图受“纠正中国地图偏移”开关控制。
+function buildMapItems(lat, lon, fixOffset) {
+  const gcj = wgs84ToGcj02(lat, lon);
+  const bd = gcj02ToBd09(gcj.lat, gcj.lon);
+  const enc = (a, b) => encodeURIComponent(a + "," + b);
+  // 所有坐标统一裁剪到厘米级，避免出现 15 位小数的冗余精度
+  const latS = fmtCoord(lat), lonS = fmtCoord(lon);
+  const gLatS = fmtCoord(gcj.lat), gLonS = fmtCoord(gcj.lon);
+  const bLatS = fmtCoord(bd.lat), bLonS = fmtCoord(bd.lon);
+  const wgsTag = "WGS-84";
+
+  // 受开关控制的坐标（开=GCJ-02，关=原始 WGS-84）
+  const sLatS = fixOffset ? gLatS : latS;
+  const sLonS = fixOffset ? gLonS : lonS;
+  const switchTag = fixOffset ? "GCJ-02" : "WGS-84";
+
+  return [
+    // 受偏移纠正开关控制
+    { name: "高德地图", url: `https://uri.amap.com/marker?position=${sLonS},${sLatS}`, tag: switchTag },
+    fixOffset
+    ? { name: "百度地图", url: `https://api.map.baidu.com/marker?location=${bLatS},${bLonS}&coord_type=bd09ll&output=html`, tag: "BD-09" }
+    : { name: "百度地图", url: `https://api.map.baidu.com/marker?location=${latS},${lonS}&coord_type=wgs84&output=html`, tag: wgsTag },
+    { name: "腾讯地图", url: `https://mapapi.qq.com/web/mapComponents/locationMarker/v/index.html?marker=coord:${sLatS},${sLonS}`, tag: switchTag },
+    { name: "Google Maps", url: `https://www.google.com/maps?q=${enc(sLatS, sLonS)}`, tag: switchTag },
+    { name: "Apple Maps", url: `https://maps.apple.com/place?ll=${enc(sLatS, sLonS)}`, tag: switchTag },
+    { name: "Bing Maps", url: `https://www.bing.com/maps?cp=${sLatS}~${sLonS}&lvl=16&style=r`, tag: switchTag },
+
+    // 非偏移地图（与 WGS-84 对齐，不受开关影响）
+    { name: "Google Maps（卫星）", url: `https://www.google.com/maps/@${latS},${lonS},16z/data=!3m1!1e3`, tag: wgsTag },
+    { name: "Bing Maps（卫星）", url: `https://www.bing.com/maps?cp=${latS}~${lonS}&lvl=16&style=h`, tag: wgsTag },
+    { name: "OpenStreetMap", url: `https://www.openstreetmap.org/?mlat=${latS}&mlon=${lonS}#map=16/${latS}/${lonS}`, tag: wgsTag },
+  ];
+}
+
+/* ---------- UI ---------- */
+
+const input = document.getElementById("coordInput");
+const coordResults = document.getElementById("coordResults");
+const linkResults = document.getElementById("linkResults");
+const resultsArea = document.getElementById("resultsArea");
+const resultsHead = document.getElementById("resultsHead");
+const statusEl = document.getElementById("status");
+const offsetSwitch = document.getElementById("offsetSwitch");
+
+function showStatus(msg, ok) {
+  statusEl.textContent = msg;
+  statusEl.classList.toggle("ok", !!ok);
+}
+
+const COPY_ICON = '<svg viewBox="0 0 24 24"><path d="M16 1H4a2 2 0 0 0-2 2v14h2V3h12V1zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h11v14z"/></svg>';
+const CHECK_ICON = '<svg viewBox="0 0 24 24"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/></svg>';
+
+// 复制并给按钮打勾反馈（复制失败时回退为选区复制）
+function makeCopyHandler(text, valueEl, btn) {
+  return (e) => {
+    if (e) { e.preventDefault(); e.stopPropagation(); }
+    const done = () => {
+      btn.classList.add("done");
+      btn.innerHTML = CHECK_ICON;
+      btn.title = "已复制";
+      setTimeout(() => {
+        btn.classList.remove("done");
+        btn.innerHTML = COPY_ICON;
+        btn.title = "复制";
+      }, 1200);
+    };
+    navigator.clipboard.writeText(text).then(done).catch(() => {
+      const r = document.createRange();
+      r.selectNodeContents(valueEl);
+      const sel = getSelection();
+      sel.removeAllRanges();
+      sel.addRange(r);
+      document.execCommand("copy");
+      done();
+    });
+  };
+}
+
+// 渲染一组卡片
+function renderCards(container, items) {
+  container.innerHTML = "";
+  for (const item of items) {
+    // textOnly 卡片（坐标表示）点击即复制；链接卡片点击打开（geo: 由系统接管，http(s) 新标签打开）
+    const card = document.createElement(item.textOnly ? "div" : "a");
+    card.className = "result-card";
+    if (!item.textOnly) {
+      card.href = item.url;
+      if (/^https?:/i.test(item.url)) {
+        card.target = "_blank";
+        card.rel = "noopener";
+      }
+    } else {
+      card.title = "点击复制";
+    }
+
+    const label = document.createElement("div");
+    label.className = "label";
+    label.textContent = item.name;
+    if (item.tag) {
+      const t = document.createElement("span");
+      t.className = "tag";
+      t.textContent = item.tag;
+      label.appendChild(t);
+    }
+
+    const value = document.createElement("div");
+    value.className = "value";
+    value.textContent = item.url;
+
+    // 右上角复制按钮
+    const copyBtn = document.createElement("button");
+    copyBtn.className = "copy-btn";
+    copyBtn.type = "button";
+    copyBtn.title = "复制";
+    copyBtn.innerHTML = COPY_ICON;
+    copyBtn.addEventListener("click", makeCopyHandler(item.url, value, copyBtn));
+
+    card.append(label, value, copyBtn);
+
+    if (item.textOnly) {
+      card.addEventListener("click", makeCopyHandler(item.url, value, copyBtn));
+    }
+
+    container.appendChild(card);
+  }
+}
+
+let lastParsed = null;
+
+function convert() {
+  const parsed = parseCoord(input.value);
+  coordResults.innerHTML = "";
+  linkResults.innerHTML = "";
+
+  if (!parsed) {
+    lastParsed = null;
+    resultsArea.hidden = true;
+    resultsHead.textContent = "输入坐标或链接后，转换结果将显示在这里。";
+    showStatus("无法解析输入，请检查坐标格式。");
+    return;
+  }
+  if (Math.abs(parsed.lat) > 90 || Math.abs(parsed.lon) > 180) {
+    lastParsed = null;
+    resultsArea.hidden = true;
+    resultsHead.textContent = "输入坐标或链接后，转换结果将显示在这里。";
+    showStatus("坐标超出范围（纬度 ±90，经度 ±180）。");
+    return;
+  }
+
+  lastParsed = parsed;
+  resultsArea.hidden = false;
+  showStatus(`已解析：纬度 ${parsed.lat}，经度 ${parsed.lon}`, true);
+  resultsHead.textContent = "";
+
+  renderCards(coordResults, buildCoordItems(parsed.lat, parsed.lon));
+  renderCards(linkResults, buildMapItems(parsed.lat, parsed.lon, offsetSwitch.checked));
+}
+
+// 切换偏移纠正后立即刷新地图链接
+offsetSwitch.addEventListener("change", () => {
+  if (lastParsed) {
+    renderCards(linkResults, buildMapItems(lastParsed.lat, lastParsed.lon, offsetSwitch.checked));
+  }
+});
+
+document.getElementById("convertBtn").addEventListener("click", convert);
+input.addEventListener("keydown", (e) => { if (e.key === "Enter") convert(); });
+
+document.getElementById("locBtn").addEventListener("click", () => {
+  if (!navigator.geolocation) { showStatus("当前浏览器不支持定位。"); return; }
+  showStatus("正在获取当前位置…");
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      input.value = pos.coords.latitude + "," + pos.coords.longitude;
+      convert();
+    },
+    () => showStatus("定位失败，请检查权限设置。"),
+    { enableHighAccuracy: true, timeout: 10000 }
+  );
+});
+</script>
+</body>
+</html>
