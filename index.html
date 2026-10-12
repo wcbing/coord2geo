@@ -435,12 +435,6 @@ function wgs84ToGcj02(lat, lon) {
   dLon = (dLon * 180.0) / (A / sqrtMagic * Math.cos(radLat) * PI);
   return { lat: lat + dLat, lon: lon + dLon };
 }
-function gcj02ToBd09(lat, lon) {
-  if (outOfChina(lat, lon)) return { lat, lon };
-  const z = Math.sqrt(lon * lon + lat * lat) + 0.00002 * Math.sin(lat * 3000.0 * PI);
-  const theta = Math.atan2(lat, lon) + 0.000003 * Math.cos(lon * 3000.0 * PI);
-  return { lat: z * Math.sin(theta) + 0.006, lon: z * Math.cos(theta) + 0.0065 };
-}
 
 /* ---------- 结果生成 ---------- */
 
@@ -482,12 +476,10 @@ function buildCoordItems(lat, lon) {
 // 国内地图和部分国外地图受“纠正中国地图偏移”开关控制。
 function buildMapItems(lat, lon, fixOffset) {
   const gcj = wgs84ToGcj02(lat, lon);
-  const bd = gcj02ToBd09(gcj.lat, gcj.lon);
   const enc = (a, b) => encodeURIComponent(a + "," + b);
   // 所有坐标统一裁剪到厘米级，避免出现 15 位小数的冗余精度
   const latS = fmtCoord(lat), lonS = fmtCoord(lon);
   const gLatS = fmtCoord(gcj.lat), gLonS = fmtCoord(gcj.lon);
-  const bLatS = fmtCoord(bd.lat), bLonS = fmtCoord(bd.lon);
   const wgsTag = "WGS-84";
 
   // 受开关控制的坐标（开=GCJ-02，关=原始 WGS-84）
@@ -496,18 +488,19 @@ function buildMapItems(lat, lon, fixOffset) {
   const switchTag = fixOffset ? "GCJ-02" : "WGS-84";
 
   return [
-    // 受偏移纠正开关控制
-    { name: "高德地图", url: `https://uri.amap.com/marker?position=${sLonS},${sLatS}`, tag: switchTag },
-    fixOffset
-    ? { name: "百度地图", url: `https://api.map.baidu.com/marker?location=${bLatS},${bLonS}&coord_type=bd09ll&output=html`, tag: "BD-09" }
-    : { name: "百度地图", url: `https://api.map.baidu.com/marker?location=${latS},${lonS}&coord_type=wgs84&output=html`, tag: wgsTag },
-    { name: "腾讯地图", url: `https://mapapi.qq.com/web/mapComponents/locationMarker/v/index.html?marker=coord:${sLatS},${sLonS}`, tag: switchTag },
+    // 国内地图：由各家接口按 WGS-84 自动转换（高德 coordinate=wgs84、百度 coord_type=wgs84、腾讯 coord_type=1）
+    { name: "高德地图", url: `https://uri.amap.com/marker?position=${lonS},${latS}&coordinate=wgs84`, tag: wgsTag },
+    { name: "百度地图", url: `https://api.map.baidu.com/marker?location=${latS},${lonS}&coord_type=wgs84&output=html`, tag: wgsTag },
+    // 腾讯：官方 API 的 coord_type 参数实测不生效，故直接传本地换算好的 GCJ-02
+    { name: "腾讯地图", url: `https://apis.map.qq.com/uri/v1/marker?marker=coord:${sLatS},${sLonS};title:marker`, tag: switchTag },
+
+    // 受“纠正中国区域的地图偏移”开关控制
     { name: "Google Maps", url: `https://www.google.com/maps?q=${enc(sLatS, sLonS)}`, tag: switchTag },
     { name: "Apple Maps", url: `https://maps.apple.com/place?ll=${enc(sLatS, sLonS)}`, tag: switchTag },
     { name: "Bing Maps", url: `https://www.bing.com/maps?cp=${sLatS}~${sLonS}&lvl=16&style=r`, tag: switchTag },
 
     // 非偏移地图（与 WGS-84 对齐，不受开关影响）
-    { name: "Google Maps（卫星）", url: `https://www.google.com/maps/@${latS},${lonS},16z/data=!3m1!1e3`, tag: wgsTag },
+    { name: "Google Maps（卫星）", url: `https://www.google.com/maps?q=${enc(latS, lonS)}&t=h`, tag: wgsTag },
     { name: "Bing Maps（卫星）", url: `https://www.bing.com/maps?cp=${latS}~${lonS}&lvl=16&style=h`, tag: wgsTag },
     { name: "OpenStreetMap", url: `https://www.openstreetmap.org/?mlat=${latS}&mlon=${lonS}#map=16/${latS}/${lonS}`, tag: wgsTag },
   ];
