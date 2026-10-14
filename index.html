@@ -125,18 +125,58 @@
   .status { font-size: 13px; color: var(--error); margin-top: 10px; min-height: 18px; overflow-wrap: break-word; }
   .status.ok { color: var(--ok); }
 
-  /* ---------- 偏移纠正开关 ---------- */
+  /* ---------- 偏移纠正开关（位于“在线地图”区内） ---------- */
   .switch-row {
     display: flex;
     align-items: center;
-    gap: 10px;
-    margin-top: 14px;
-    padding-top: 14px;
-    border-top: 1px solid var(--border);
+    gap: 12px;
+    margin: 0 0 14px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: var(--accent-soft);
   }
-  .switch-row .switch-text { flex: 1; min-width: 0; }
+  .switch-row .switch-text { flex: 1; min-width: 0; position: relative; }
   .switch-row .switch-title { font-size: 14px; font-weight: 600; }
-  .switch-row .switch-hint { font-size: 12px; color: var(--text-2); margin-top: 2px; line-height: 1.4; }
+
+  /* （?）说明按钮与点击展开的气泡 */
+  .help-btn {
+    width: 18px; height: 18px;
+    margin-left: 6px;
+    padding: 0;
+    vertical-align: middle;
+    border: 1px solid var(--accent);
+    border-radius: 50%;
+    background: transparent;
+    color: var(--accent);
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+    transition: background .15s, color .15s;
+  }
+  .help-btn:hover, .help-btn[aria-expanded="true"] { background: var(--accent-soft); }
+  .help-pop {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    z-index: 30;
+    width: max-content;
+    max-width: min(340px, calc(100vw - 56px));
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface);
+    color: var(--text-2);
+    font-size: 12px;
+    line-height: 1.55;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, .18);
+  }
+  .help-pop[hidden] { display: none; }
+  .help-pop p { margin: 0; }
+  .help-pop p + p { margin-top: 6px; }
+  .help-pop a { color: var(--accent); text-decoration: none; font-weight: 600; }
+  .help-pop a:hover { text-decoration: underline; }
   .switch { position: relative; flex: none; width: 46px; height: 26px; display: inline-block; }
   .switch input { position: absolute; opacity: 0; width: 0; height: 0; }
   .switch .slider {
@@ -175,6 +215,62 @@
     border-left: 4px solid var(--accent);
     line-height: 1.15;
   }
+  /* 分区标题行：标题在左，胶囊切换在右 */
+  .section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px 14px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+  }
+  .section-head .section-title { margin: 0; }
+  .head-label { position: relative; display: flex; align-items: center; gap: 4px; min-width: 0; }
+
+  /* 胶囊型分段控件（内含滑块） */
+  .seg {
+    position: relative;
+    display: inline-flex;
+    flex: none;
+    padding: 3px;
+    border-radius: 999px;
+    background: var(--card);
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, .07);
+  }
+  .seg-thumb {
+    position: absolute;
+    top: 3px;
+    bottom: 3px;
+    left: 3px;
+    width: calc((100% - 6px) / 3);
+    border-radius: 999px;
+    background: var(--surface);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, .22);
+    transition: transform .24s cubic-bezier(.4, 0, .2, 1);
+  }
+  @media (prefers-color-scheme: dark) {
+    .seg-thumb { background: #3d444d; }
+  }
+  .seg-btn {
+    position: relative;
+    z-index: 1;
+    flex: 1 1 0;
+    min-width: 68px;
+    padding: 5px 10px;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--text-2);
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    line-height: 1.4;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: color .2s;
+  }
+  .seg-btn.is-active { color: var(--accent); }
+  .seg-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .results-head {
     font-size: 14px;
     color: var(--text-2);
@@ -277,17 +373,6 @@
         </button>
       </div>
 
-      <div class="switch-row">
-        <div class="switch-text">
-          <div class="switch-title">纠正中国区域的地图偏移</div>
-          <div class="switch-hint">控制部分地图使用 GCJ-02 还是原始 WGS-84 定位国内坐标</div>
-        </div>
-        <label class="switch">
-          <input type="checkbox" id="offsetSwitch" checked>
-          <span class="slider"></span>
-        </label>
-      </div>
-
       <div class="status" id="status"></div>
     </section>
 
@@ -296,11 +381,45 @@
       <div class="results-head" id="resultsHead">输入坐标或链接后，转换结果将显示在这里。</div>
 
       <div id="resultsArea" hidden>
-        <h2 class="section-title">坐标表示</h2>
+        <div class="section-head">
+          <div class="head-label">
+            <h2 class="section-title">坐标表示</h2>
+            <button class="help-btn" id="crsHelp" type="button" aria-expanded="false" aria-controls="crsHelpPop" title="说明" aria-label="查看说明">?</button>
+            <div class="help-pop" id="crsHelpPop" hidden>
+              <p>切换本区坐标使用的坐标系：WGS-84 为 GPS 等使用的国际通用坐标系；GCJ-02 为国测局坐标系，是中国境内地图要求至少使用的加密坐标系。</p>
+              <!-- ；BD-09 为百度系坐标系。</p> -->
+              <p>对于中国境内地点，高德地图、百度地图仍使用 WGS-84 坐标系的 geo 链接，其可自行转换。腾讯地图、Google Maps 等请使用 GCJ-02 坐标系的 geo 链接。</p>
+            </div>
+          </div>
+
+          <div class="seg" id="crsTabs" role="radiogroup" aria-label="坐标表示所用的坐标系">
+            <span class="seg-thumb" aria-hidden="true"></span>
+            <button class="seg-btn is-active" type="button" role="radio" aria-checked="true" data-crs="wgs84">WGS-84</button>
+            <button class="seg-btn" type="button" role="radio" aria-checked="false" data-crs="gcj02">GCJ-02</button>
+            <!-- <button class="seg-btn" type="button" role="radio" aria-checked="false" data-crs="bd09">BD-09</button> -->
+          </div>
+        </div>
+
         <div class="grid" id="coordResults"></div>
 
         <div class="results-section gap-top">
           <h2 class="section-title">在线地图</h2>
+
+          <div class="switch-row">
+            <div class="switch-text">
+              <div class="switch-title">纠正中国境内地图偏移<button class="help-btn" id="switchHelp" type="button" aria-expanded="false" aria-controls="switchHelpPop" title="说明" aria-label="查看说明">?</button></div>
+              <div class="help-pop" id="switchHelpPop" hidden>
+                <p>中国境内地图必须进行空间位置技术处理，坐标会产生偏移，<a href="https://zh.wikipedia.org/wiki/%E4%B8%AD%E5%8D%8E%E4%BA%BA%E6%B0%91%E5%85%B1%E5%92%8C%E5%9B%BD%E5%9C%B0%E7%90%86%E6%95%B0%E6%8D%AE%E9%99%90%E5%88%B6#%E4%B8%AD%E5%9B%BD%E5%A4%A7%E9%99%B8%E5%9C%B0%E5%9B%BE%E5%81%8F%E7%A7%BB%E9%97%AE%E9%A2%98" target="_blank" rel="noopener">详细说明</a></p>
+                <p>开启后可帮助部分无法转换的地图正确显示位置。</p>
+                <p>注：空间位置技术处理只针对中国境内，本程序未作严格国界判定（仅判定中国所在矩形区域），使用前请确认坐标位于中国境内。</p>
+              </div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="offsetSwitch" checked>
+              <span class="slider"></span>
+            </label>
+          </div>
+
           <div class="grid" id="linkResults"></div>
         </div>
       </div>
@@ -435,6 +554,20 @@ function wgs84ToGcj02(lat, lon) {
   dLon = (dLon * 180.0) / (A / sqrtMagic * Math.cos(radLat) * PI);
   return { lat: lat + dLat, lon: lon + dLon };
 }
+function gcj02ToBd09(lat, lon) {
+  if (outOfChina(lat, lon)) return { lat, lon };
+  const z = Math.sqrt(lon * lon + lat * lat) + 0.00002 * Math.sin(lat * 3000.0 * PI);
+  const theta = Math.atan2(lat, lon) + 0.000003 * Math.cos(lon * 3000.0 * PI);
+  return { lat: z * Math.sin(theta) + 0.006, lon: z * Math.cos(theta) + 0.0065 };
+}
+
+// 把 WGS-84 输入换算到目标坐标系（境外坐标不偏移）
+function toCrs(lat, lon, crs) {
+  const gcj = wgs84ToGcj02(lat, lon);
+  if (crs === "gcj02") return gcj;
+  if (crs === "bd09") return gcj02ToBd09(gcj.lat, gcj.lon);
+  return { lat, lon };
+}
 
 /* ---------- 结果生成 ---------- */
 
@@ -461,14 +594,15 @@ function toDMM(val, isLatS) {
   return `${deg}°${min.toFixed(4)}'${hemi}`;
 }
 
-// 第一块：坐标表示（纯文本，点击复制）
-function buildCoordItems(lat, lon) {
-  const latS = fmtCoord(lat), lonS = fmtCoord(lon);
+// 第一块：坐标表示（纯文本，点击复制）；crs 决定输出所用坐标系
+function buildCoordItems(lat, lon, crs) {
+  const c = toCrs(lat, lon, crs);
+  const latS = fmtCoord(c.lat), lonS = fmtCoord(c.lon);
   return [
     { name: "GeoLink", url: `geo:${latS},${lonS}`},
     { name: "十进制坐标", url: `${latS},${lonS}`, textOnly: true },
-    { name: "度分秒（DMS）坐标", url: `${toDMS(lat, true)} ${toDMS(lon, false)}`, textOnly: true },
-    { name: "度分（DMM）坐标", url: `${toDMM(lat, true)} ${toDMM(lon, false)}`, textOnly: true },
+    { name: "度分秒（DMS）坐标", url: `${toDMS(c.lat, true)} ${toDMS(c.lon, false)}`, textOnly: true },
+    { name: "度分（DMM）坐标", url: `${toDMM(c.lat, true)} ${toDMM(c.lon, false)}`, textOnly: true },
   ];
 }
 
@@ -515,6 +649,10 @@ const resultsArea = document.getElementById("resultsArea");
 const resultsHead = document.getElementById("resultsHead");
 const statusEl = document.getElementById("status");
 const offsetSwitch = document.getElementById("offsetSwitch");
+const crsTabs = document.getElementById("crsTabs");
+const crsThumb = crsTabs.querySelector(".seg-thumb");
+const crsButtons = Array.from(crsTabs.querySelectorAll(".seg-btn"));
+let currentCrs = "wgs84";
 
 function showStatus(msg, ok) {
   statusEl.textContent = msg;
@@ -626,15 +764,83 @@ function convert() {
   showStatus(`已解析：纬度 ${parsed.lat}，经度 ${parsed.lon}`, true);
   resultsHead.textContent = "";
 
-  renderCards(coordResults, buildCoordItems(parsed.lat, parsed.lon));
+  setCrs(currentCrs, false); // 结果区显示后按实测尺寸重新定位滑块
+  renderCards(coordResults, buildCoordItems(parsed.lat, parsed.lon, currentCrs));
   renderCards(linkResults, buildMapItems(parsed.lat, parsed.lon, offsetSwitch.checked));
 }
+
+// 切换“坐标表示”坐标系后立即刷新坐标区
+function setCrs(crs, rerender) {
+  let idx = crsButtons.findIndex((b) => b.dataset.crs === crs);
+  if (idx < 0) idx = 0;
+  const btn = crsButtons[idx];
+  currentCrs = btn.dataset.crs;
+  crsButtons.forEach((b, i) => {
+    b.classList.toggle("is-active", i === idx);
+    b.setAttribute("aria-checked", i === idx ? "true" : "false");
+  });
+  // 滑块按当前选项实测位置定位，选项数量与文字宽度变化都能自适应
+  const segRect = crsTabs.getBoundingClientRect();
+  const btnRect = btn.getBoundingClientRect();
+  if (btnRect.width > 0) {
+    crsThumb.style.width = btnRect.width + "px";
+    crsThumb.style.transform = `translateX(${btnRect.left - segRect.left - 3}px)`;
+  }
+  if (rerender !== false && lastParsed) {
+    renderCards(coordResults, buildCoordItems(lastParsed.lat, lastParsed.lon, currentCrs));
+  }
+}
+
+crsButtons.forEach((b) => b.addEventListener("click", () => setCrs(b.dataset.crs)));
+crsTabs.addEventListener("keydown", (e) => {
+  const dir = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+  if (!dir) return;
+  e.preventDefault();
+  const idx = crsButtons.findIndex((b) => b.dataset.crs === currentCrs);
+  const next = crsButtons[(idx + dir + crsButtons.length) % crsButtons.length];
+  setCrs(next.dataset.crs);
+  next.focus();
+});
+window.addEventListener("resize", () => setCrs(currentCrs, false));
+setCrs("wgs84", false);
 
 // 切换偏移纠正后立即刷新地图链接
 offsetSwitch.addEventListener("change", () => {
   if (lastParsed) {
     renderCards(linkResults, buildMapItems(lastParsed.lat, lastParsed.lon, offsetSwitch.checked));
   }
+});
+
+// （?）说明气泡：点击展开；点击别处或按 Esc 收起（同时只展开一个）
+const helpBtns = Array.from(document.querySelectorAll(".help-btn"));
+
+function setHelpOpen(btn, open) {
+  const pop = document.getElementById(btn.getAttribute("aria-controls"));
+  if (!pop) return;
+  pop.hidden = !open;
+  btn.setAttribute("aria-expanded", open ? "true" : "false");
+}
+
+function closeAllHelp() {
+  helpBtns.forEach((b) => setHelpOpen(b, false));
+}
+
+helpBtns.forEach((btn) => {
+  btn.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const pop = document.getElementById(btn.getAttribute("aria-controls"));
+    const open = pop ? pop.hidden : false;
+    closeAllHelp();
+    setHelpOpen(btn, open);
+  });
+});
+document.addEventListener("click", (e) => {
+  const t = e.target;
+  if (!(t instanceof Element) || (!t.closest(".help-btn") && !t.closest(".help-pop"))) closeAllHelp();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeAllHelp();
 });
 
 document.getElementById("convertBtn").addEventListener("click", convert);
