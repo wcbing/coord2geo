@@ -607,7 +607,7 @@ function buildCoordItems(lat, lon, crs) {
 }
 
 // 第二块：地图链接
-// 国内地图和部分国外地图受“纠正中国地图偏移”开关控制。
+// 部分国外地图受“纠正中国地图偏移”开关控制。
 function buildMapItems(lat, lon, fixOffset) {
   const gcj = wgs84ToGcj02(lat, lon);
   const enc = (a, b) => encodeURIComponent(a + "," + b);
@@ -625,8 +625,7 @@ function buildMapItems(lat, lon, fixOffset) {
     // 国内地图：由各家接口按 WGS-84 自动转换（高德 coordinate=wgs84、百度 coord_type=wgs84、腾讯 coord_type=1）
     { name: "高德地图", url: `https://uri.amap.com/marker?position=${lonS},${latS}&coordinate=wgs84`, tag: wgsTag },
     { name: "百度地图", url: `https://api.map.baidu.com/marker?location=${latS},${lonS}&coord_type=wgs84&output=html`, tag: wgsTag },
-    // 腾讯：官方 API 的 coord_type 参数实测不生效，故直接传本地换算好的 GCJ-02
-    { name: "腾讯地图", url: `https://apis.map.qq.com/uri/v1/marker?marker=coord:${sLatS},${sLonS};title:marker`, tag: switchTag },
+    { name: "腾讯地图", url: `https://apis.map.qq.com/uri/v1/marker?marker=coord:${latS},${lonS};title:marker&coord_type=1`, tag: wgsTag },
 
     // 受“纠正中国区域的地图偏移”开关控制
     { name: "Google Maps", url: `https://www.google.com/maps?q=${enc(sLatS, sLonS)}`, tag: switchTag },
